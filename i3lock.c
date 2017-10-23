@@ -27,7 +27,6 @@
 #include <security/pam_appl.h>
 #endif
 #include <getopt.h>
-#include <string.h>
 #include <ev.h>
 #include <sys/mman.h>
 #include <xkbcommon/xkbcommon.h>
@@ -46,6 +45,7 @@
 #include <sys/ioctl.h>
 #endif
 
+#include "img_load.h"
 #include "i3lock.h"
 #include "xcb.h"
 #include "cursors.h"
@@ -1069,13 +1069,16 @@ int main(int argc, char *argv[]) {
     xcb_change_window_attributes(conn, screen->root, XCB_CW_EVENT_MASK,
                                  (uint32_t[]){XCB_EVENT_MASK_STRUCTURE_NOTIFY});
 
-    if (verify_png_image(image_path)) {
-        /* Create a pixmap to render on, fill it with the background color */
-        img = cairo_image_surface_create_from_png(image_path);
+    if (image_path) {
         /* In case loading failed, we just pretend no -i was specified. */
-        if (cairo_surface_status(img) != CAIRO_STATUS_SUCCESS) {
+        if (!cairo_image_surface_from_file(image_path, &img))
+        {
+            fprintf(stderr, "Could not load image \"%s\": %s\n", image_path, strerror(errno));
+            img = NULL;
+        } else if (cairo_surface_status(img) != CAIRO_STATUS_SUCCESS) {
             fprintf(stderr, "Could not load image \"%s\": %s\n",
                     image_path, cairo_status_to_string(cairo_surface_status(img)));
+            cairo_surface_destroy(img);
             img = NULL;
         }
     }
@@ -1190,6 +1193,10 @@ int main(int argc, char *argv[]) {
 #endif
 
     DEBUG("restoring focus to X11 window 0x%08x\n", stolen_focus);
+    if (img != NULL)
+    {
+        cairo_surface_destroy(img);
+    }
     xcb_ungrab_pointer(conn, XCB_CURRENT_TIME);
     xcb_ungrab_keyboard(conn, XCB_CURRENT_TIME);
     xcb_destroy_window(conn, win);
